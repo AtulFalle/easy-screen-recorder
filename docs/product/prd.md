@@ -67,7 +67,7 @@ Job: `Ctrl+Shift+R` → talk over a Figma/IDE/Chrome session → pause → stop 
 
 ### Out of MVP1
 
-Region capture, instant replay, adaptive quality, MediaMTX / LAN / WebRTC, native settings window / egui, installer / auto-updater, performance dashboard.
+Region capture, instant replay, adaptive quality, MediaMTX / LAN / WebRTC, native settings window / egui, auto-updater, performance dashboard.
 
 ## MVP2 — Encode-once
 
@@ -92,14 +92,14 @@ Job: encode H.264 **once**. Extra outputs subscribe to those packets. Never star
 
 ### Out of MVP2
 
-In-process WebRTC viewer, region capture, native settings window / installer / updater, live performance dashboard, HEVC/AV1, cloud, accounts, overlays, virtual camera.
+In-process WebRTC viewer, region capture, native settings window / auto-updater, live performance dashboard, HEVC/AV1, cloud, accounts, overlays, virtual camera.
 
 ## Parked (do not sneak back in)
 
 - Homelab as a product (MediaMTX is an ingest target, not a suite)
 - Region capture, HEVC/AV1, macOS/Linux
 - egui / settings window / dashboard
-- Installer, code signing, auto-update (GitHub Releases exe stays the ship vehicle)
+- Code signing and auto-update (GitHub Releases ship the Inno installer; no in-app updater)
 - Cloud, accounts, editing, AI
 - Second encoder for any output
 - Bundled Chromium / Electron / Tauri in the recording path

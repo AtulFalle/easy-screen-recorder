@@ -17,4 +17,5 @@ alwaysApply: true
 - **MVP0 shipped:** WGC + MF H.264 MP4, tray, hotkey. Engine already uses `windows-capture`.
 - **MVP1 Daily Driver in:** WASAPI audio, tray pause, GPU scaler, tray telemetry/failure toasts, named profiles, smart filenames, recent files, stable display ids.
 - **MVP2 Encode-once (in):** adaptive FPS on the one encoder; MediaMTX ingest is `ffmpeg -c copy` of the MP4. Tray URL + toggle. Last-N replay is not in.
-- **Parked:** region capture, HEVC/AV1, installer/updater, settings window, in-process WebRTC viewer, homelab suite, MF packet bus / last-N replay ring.
+- **Installer (in):** Inno Setup per-user/all-users wizard; GitHub Releases publish the setup exe only. No auto-updater.
+- **Parked:** region capture, HEVC/AV1, auto-updater, settings window, in-process WebRTC viewer, homelab suite, MF packet bus / last-N replay ring.

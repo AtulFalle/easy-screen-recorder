@@ -4,11 +4,13 @@ Lightweight native Windows screen recorder. Local-first: shortcut, hardware H.26
 
 This repository can record the primary display (or a window) to H.264 MP4 via Windows Graphics Capture and Media Foundation. Quality presets GPU-scale to 720p or 1080p before encode. System audio and microphone are captured by default (WASAPI, mixed to one AAC track). Encoder backpressure steps FPS down (60 → 30 → 24) without starting a second encoder. Optional MediaMTX ingest remuxes the finished file (`ffmpeg -c copy`).
 
-## Download (mvp0)
+## Download
 
-Get **LightCapture.exe** from [GitHub Releases](https://github.com/AtulFalle/easy-screen-recorder/releases). Double-click it. You do not need Rust, Visual Studio, or any project script.
+Get **LightCapture-Setup-*.exe** from [GitHub Releases](https://github.com/AtulFalle/easy-screen-recorder/releases). Run the installer. You do not need Rust, Visual Studio, or any project script.
 
-Windows SmartScreen may warn on the first run because the exe is not code-signed. Choose **More info** → **Run anyway**.
+The wizard defaults to a per-user install (no admin). You can choose all users (UAC, Program Files). It creates a Start Menu shortcut and a desktop shortcut. It does not start LightCapture at login.
+
+Windows SmartScreen may warn because the setup is not code-signed. Choose **More info** → **Run anyway**.
 
 Requires Windows 10 version 1903 or later (x64).
 
@@ -37,7 +39,16 @@ cargo build --release -p lightcapture-app
 .\target\release\lightcapture.exe
 ```
 
-You can copy `target\release\lightcapture.exe` anywhere (Desktop, a folder) and launch it without Cargo. Tagged `v*` pushes also publish that binary as `LightCapture.exe` on GitHub Releases.
+You can still launch `target\release\lightcapture.exe` without installing. Tagged `v*` pushes publish an Inno installer on GitHub Releases, not the raw exe.
+
+Optional local installer (needs Inno Setup 6):
+
+```powershell
+cargo build --release --locked -p lightcapture-app
+.\scripts\build-installer.ps1 -AppVersion 0.1.0
+```
+
+Output: `dist\LightCapture-Setup-0.1.0.exe`
 
 ## CLI
 

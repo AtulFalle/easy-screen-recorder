@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   windows:
-    name: Build Windows exe
+    name: Build Windows installer
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -36,33 +36,38 @@ jobs:
       - name: Build tray app
         run: cargo build --release --locked -p lightcapture-app
 
-      - name: Stage artifact
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        id: installer
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target\release\lightcapture.exe dist\LightCapture.exe
-          $hash = (Get-FileHash dist\LightCapture.exe -Algorithm SHA256).Hash.ToLower()
-          Set-Content -Path dist\LightCapture.exe.sha256 -Value "$hash  LightCapture.exe" -Encoding ascii
+          $version = '${{ github.ref_name }}'
+          if ($version.StartsWith('v')) { $version = $version.Substring(1) }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          .\scripts\build-installer.ps1 -AppVersion $version -ExePath target\release\lightcapture.exe
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name == 'v0.1.0' && 'mvp0' || github.ref_name }}
+          name: ${{ github.ref_name }}
           draft: false
           prerelease: false
           make_latest: true
           fail_on_unmatched_files: true
           files: |
-            dist/LightCapture.exe
-            dist/LightCapture.exe.sha256
+            dist/LightCapture-Setup-${{ steps.installer.outputs.version }}.exe
+            dist/LightCapture-Setup-${{ steps.installer.outputs.version }}.exe.sha256
           body: |
-            First downloadable Windows build of LightCapture.
+            Windows installer for LightCapture.
 
-            Double-click **LightCapture.exe**. No Rust install and no scripts.
+            Run **LightCapture-Setup-*.exe**. No Rust install and no scripts.
 
+            - Choose install for me (default, no admin) or for everyone.
+            - Start Menu and desktop shortcuts are created (desktop is optional in the wizard).
             - The app lives in the notification area (tray). There is no main window.
-            - `Ctrl+Shift+R` starts and stops recording.
-            - Right-click the tray icon for quality, capture source, output folder, and cursor.
+            - `Ctrl+Shift+R` starts and stops recording. `Ctrl+Shift+P` pauses.
             - Recordings default to `Videos\LightCapture`.
 
-            Requires Windows 10 version 1903 or later (x64). Windows SmartScreen may warn because this build is not code-signed.
+            Requires Windows 10 version 1903 or later (x64). Windows SmartScreen may warn because this build is not code-signed. Choose **More info** → **Run anyway**.
