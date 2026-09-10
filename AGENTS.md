@@ -22,6 +22,7 @@ Roadmap (see `docs/product/prd.md`):
 - `lightcapture-core` — engine library. No UI.
 - `lightcapture-cli` — headless front on core.
 - `lightcapture-app` — tray front on core (`Ctrl+Shift+R`, `Ctrl+Shift+P` pause, options menu).
+- **Installer (in):** Inno Setup 6 (`installer/LightCapture.iss`). Tagged releases upload `LightCapture-Setup-*.exe` only. Auto-updater stays parked.
 
 ## Verify before claiming done
 
@@ -29,6 +30,6 @@ Run `.\scripts\check.ps1` (fmt check, clippy `-D warnings`, workspace tests). Ha
 
 ## Out of current work (parked)
 
-Region capture, HEVC/AV1, cloud, accounts, Chromium/Electron/Tauri in the record path, egui/settings window, installer/updater, in-process WebRTC viewer.
+Region capture, HEVC/AV1, cloud, accounts, Chromium/Electron/Tauri in the record path, egui/settings window, auto-updater, in-process WebRTC viewer.
 
 **MVP2-only (do not implement during MVP1):** encoded-packet fan-out inside Media Foundation, last-N replay ring.

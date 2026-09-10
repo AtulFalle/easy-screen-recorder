@@ -84,4 +84,4 @@ Triggered by encoder backpressure (2-slot pool full), not FPS throttling. Ladder
 
 ## Explicitly out (architecture)
 
-Homelab suite (MediaMTX is an ingest target only), region capture, HEVC/AV1, egui/settings window, installer/updater, second encoder, Chromium/Electron/Tauri in the recording path.
+Homelab suite (MediaMTX is an ingest target only), region capture, HEVC/AV1, egui/settings window, auto-updater, second encoder, Chromium/Electron/Tauri in the recording path.
