@@ -1,6 +1,8 @@
 /target
+/dist
 **/*.rs.bk
 *.pdb
+*.mp4
 .idea/
 .vscode/
 *.swp

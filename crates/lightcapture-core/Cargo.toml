@@ -7,3 +7,9 @@ rust-version.workspace = true
 authors.workspace = true
 description = "LightCapture recording engine"
 publish.workspace = true
+
+[dependencies]
+thiserror = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-capture = "2.0.1"

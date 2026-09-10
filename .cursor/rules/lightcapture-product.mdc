@@ -11,4 +11,4 @@ alwaysApply: true
 - Bounded memory: D3D11 frame pool size 2. Drop on backpressure. No unbounded raw-frame queues.
 - Homelab, MediaMTX, replay buffer, region capture, HEVC/AV1 are out of MVP.
 - Engine lives in `lightcapture-core`. CLI and app are fronts only.
-- Do not add capture/encode/audio/UI crates until the user asks for that product slice.
+- Do not add capture/encode/audio crates until the current engine slice is what the user asked for. The engine already uses `windows-capture` for WGC + MF H.264. The desktop front is a tray app in `lightcapture-app`. Do not add egui until asked.

@@ -1,0 +1,109 @@
+use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
+
+use lightcapture_core::{list_displays, list_windows, probe, start, CaptureTarget, RecordConfig};
+
+use crate::args::{Cli, Command, RecordArgs};
+
+pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match cli.command {
+        Command::Probe => probe_cmd(),
+        Command::Windows => windows_cmd(),
+        Command::Record(args) => record_cmd(args),
+    }
+}
+
+fn probe_cmd() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let info = probe()?;
+    println!("LightCapture {}", lightcapture_core::version());
+    println!("Selected encoder: {}", info.selected.as_str());
+    if info.encoder_names.is_empty() {
+        println!("GPUs: (none reported)");
+    } else {
+        println!("GPUs:");
+        for name in &info.encoder_names {
+            println!("  - {name}");
+        }
+    }
+    println!("Displays:");
+    if info.displays.is_empty() {
+        println!("  (none)");
+    } else {
+        for display in &info.displays {
+            println!("  - {display}");
+        }
+    }
+    let listed = list_displays()?;
+    if !listed.is_empty() {
+        println!("Display indexes:");
+        for display in listed {
+            println!(
+                "  [{}] {} ({}x{})",
+                display.index, display.name, display.width, display.height
+            );
+        }
+    }
+    Ok(())
+}
+
+fn windows_cmd() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    for window in list_windows()? {
+        println!("{} ({}x{})", window.title, window.width, window.height);
+    }
+    Ok(())
+}
+
+fn record_cmd(args: RecordArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let output = args.output.unwrap_or_else(|| {
+        RecordConfig::default_output_in(&std::env::current_dir().unwrap_or_default())
+    });
+    let target = if args.foreground {
+        CaptureTarget::ForegroundWindow
+    } else if let Some(title) = args.window {
+        CaptureTarget::WindowTitle(title)
+    } else if let Some(index) = args.display {
+        CaptureTarget::DisplayIndex(index)
+    } else {
+        CaptureTarget::PrimaryDisplay
+    };
+    let mut config = RecordConfig::new(output.clone());
+    config.target = target;
+    config.quality = args.quality.into();
+    config.include_cursor = !args.no_cursor;
+
+    eprintln!("recording to {}", config.output.display());
+    let recording = start(config)?;
+    let running = Arc::new(AtomicBool::new(true));
+    {
+        let running = Arc::clone(&running);
+        ctrlc::set_handler(move || {
+            running.store(false, Ordering::SeqCst);
+        })?;
+    }
+    let started = Instant::now();
+    let limit = args.duration.map(Duration::from_secs);
+    while running.load(Ordering::SeqCst) {
+        if limit.is_some_and(|d| started.elapsed() >= d) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+        let stats = recording.stats();
+        eprint!(
+            "\r{:>3}s  {}x{}  encoded {}  dropped {}  captured {}",
+            stats.elapsed_secs,
+            stats.width,
+            stats.height,
+            stats.frames_encoded,
+            stats.frames_dropped,
+            stats.frames_captured
+        );
+        let _ = io::stderr().flush();
+    }
+    eprintln!();
+    let path = recording.stop()?;
+    eprintln!("saved {}", path.display());
+    Ok(())
+}

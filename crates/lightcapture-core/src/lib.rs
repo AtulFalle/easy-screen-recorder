@@ -1,7 +1,22 @@
-//! LightCapture recording engine.
+//! LightCapture recording engine: capture, encode, and mux.
 //!
-//! This crate will own capture, encode, audio, and mux. It currently exposes
-//! only the workspace version so the foundation builds without recorder logic.
+//! Frontends (`lightcapture-cli`, `lightcapture-app`) call this crate only.
+
+#![deny(unsafe_op_in_unsafe_fn)]
+
+mod config;
+mod error;
+mod frame_gate;
+mod hardware;
+mod platform;
+mod session;
+mod stats;
+
+pub use config::{CaptureTarget, Quality, RecordConfig};
+pub use error::{Error, Result};
+pub use hardware::{classify_encoder, pick_encoder, probe, EncoderKind, HardwareInfo};
+pub use session::{list_displays, list_windows, start, CaptureDisplay, CaptureWindow, Recording};
+pub use stats::SessionStats;
 
 /// Workspace package version for CLI and app banners.
 #[must_use]

@@ -9,18 +9,16 @@ lightcapture-cli  ──►  lightcapture-core
 
 `core` owns capture, audio, encode, mux, settings types, and session stats. Frontends must not talk to Windows capture/encode APIs directly.
 
-## Encode-once pipeline (product path, not implemented in foundation)
+## Encode-once pipeline
 
 ```
-WGC frame  →  D3D11 pool (size 2)  →  Media Foundation H.264
+WGC frame  →  D3D11 / send_frame  →  Media Foundation H.264
                                           │
                                           ▼
-                                    encoded packet
-                                          │
-                                    MP4 (disk)
+                                    encoded packet → MP4
 ```
 
-A future stream sink may subscribe to the same encoded packets. Do not run a second video encoder.
+Implemented in `lightcapture-core` + `lightcapture-cli` (`probe`, `record`) + `lightcapture-app` (tray). A 2-slot `FrameGate` drops extra frames instead of queueing them. Audio and adaptive quality are not implemented yet.
 
 ## Memory
 
@@ -41,9 +39,9 @@ WASAPI loopback + microphone. MVP may mix to one stereo track; keep sources sepa
 
 Write MP4 incrementally. Disk-full or encoder-lost: stop cleanly and keep bytes already written. Finalize should be fast for normal recordings.
 
-## UI (after the engine writes a file)
+## UI
 
-egui/eframe, tray, `Ctrl+Shift+R`. No live preview in MVP (preview costs GPU/VRAM and fights “stay out of the way”).
+Tray-only (`lightcapture-app`): notification-area icon, `Ctrl+Shift+R`, right-click menu for quality / display / foreground window / output folder / cursor. No visible main window and no live preview (preview costs GPU/VRAM and fights “stay out of the way”). A settings window / egui can wait.
 
 ## Adaptive
 

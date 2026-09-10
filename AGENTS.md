@@ -10,13 +10,13 @@ Product intent is **not** a skill. It is in `docs/product/` and `.cursor/rules/`
 
 ## Setup vs product
 
-Foundation is in place: empty crates, fmt/clippy/test CI, Cursor rules, Rust skills. **Do not start capture, Media Foundation encode, WASAPI, or egui until the user asks for the next product slice.**
+Foundation plus a Windows recording engine (WGC → hardware H.264 MP4), CLI, and tray app. **Do not add egui until the user asks.** Audio (WASAPI) is the next engine slice.
 
 ## Crates
 
 - `lightcapture-core` — engine library. No UI.
 - `lightcapture-cli` — headless front on core.
-- `lightcapture-app` — desktop front on core.
+- `lightcapture-app` — tray front on core (`Ctrl+Shift+R`, options menu).
 
 ## Verify before claiming done
 
