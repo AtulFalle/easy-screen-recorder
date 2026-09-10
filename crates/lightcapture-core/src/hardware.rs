@@ -19,6 +19,18 @@ impl EncoderKind {
             Self::Software => "software H.264",
         }
     }
+
+    /// Short label for the tray tooltip (128-character cap).
+    #[must_use]
+    pub const fn as_short(self) -> &'static str {
+        match self {
+            Self::NvidiaNvenc => "NVENC",
+            Self::IntelQuickSync => "QSV",
+            Self::AmdAmf => "AMF",
+            Self::HardwareOther => "HW",
+            Self::Software => "SW",
+        }
+    }
 }
 
 /// Snapshot of capture devices and the encoder Media Foundation would prefer.

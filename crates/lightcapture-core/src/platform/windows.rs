@@ -18,12 +18,18 @@ use windows_capture::settings::{
 };
 use windows_capture::window::Window;
 
-use crate::config::{default_bitrate_bps, even_dimension, CaptureTarget, RecordConfig};
+use crate::adaptive::Adaptive;
+use crate::audio::{start_pump, AudioPump, PcmQueue};
+use crate::config::{
+    default_bitrate_bps, even_dimension, AudioConfig, CaptureTarget, RecordConfig,
+};
 use crate::frame_gate::FrameGate;
 use crate::hardware::{pick_encoder, EncoderKind, HardwareInfo};
 use crate::platform::types::{CaptureDisplay, CaptureWindow, Recording};
 use crate::stats::StatsInner;
-use crate::Error;
+use crate::{classify_encode_failure, Error};
+
+mod scale;
 
 #[derive(Clone)]
 struct EncoderParams {
@@ -34,6 +40,7 @@ struct EncoderParams {
     path: PathBuf,
     stats: Arc<StatsInner>,
     paused: Arc<AtomicBool>,
+    audio: AudioConfig,
 }
 
 struct CaptureHandler {
@@ -41,16 +48,91 @@ struct CaptureHandler {
     gate: FrameGate,
     stats: Arc<StatsInner>,
     paused: Arc<AtomicBool>,
+    pcm: Option<Arc<PcmQueue>>,
+    audio: Option<AudioPump>,
+    scaler: Option<scale::GpuScaler>,
+    encode_width: u32,
+    encode_height: u32,
+    adaptive: Adaptive,
 }
 
 impl CaptureHandler {
     fn finish_encoder(&mut self) -> crate::Result<()> {
+        if let Some(mut pump) = self.audio.take() {
+            pump.stop();
+        }
+        self.drain_audio()?;
         if let Some(encoder) = self.encoder.take() {
             encoder
                 .finish()
                 .map_err(|e| Error::Encoder(e.to_string()))?;
         }
         Ok(())
+    }
+
+    fn drain_audio(&mut self) -> crate::Result<()> {
+        let Some(pcm) = &self.pcm else {
+            return Ok(());
+        };
+        let Some(encoder) = self.encoder.as_mut() else {
+            return Ok(());
+        };
+        for chunk in pcm.pop_all() {
+            if chunk.is_empty() {
+                continue;
+            }
+            encoder
+                .send_audio_buffer(&chunk, 0)
+                .map_err(|e| Error::Encoder(e.to_string()))?;
+            let frames = u64::try_from(chunk.len() / 4).unwrap_or(0);
+            self.stats
+                .audio_frames_sent
+                .fetch_add(frames, Ordering::Relaxed);
+        }
+        self.stats.audio_drops.store(pcm.drops(), Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn fail_session(&mut self, message: &str) {
+        self.stats.note_failure(message);
+        let _ = self.finish_encoder();
+    }
+
+    fn ensure_scaled(&mut self, frame: &Frame<'_>) -> crate::Result<()> {
+        if frame.width() == self.encode_width && frame.height() == self.encode_height {
+            return Ok(());
+        }
+        let recreate = match &self.scaler {
+            Some(scaler) => !scaler.matches(
+                frame.width(),
+                frame.height(),
+                self.encode_width,
+                self.encode_height,
+            ),
+            None => true,
+        };
+        if recreate {
+            self.scaler = Some(scale::GpuScaler::new(
+                frame.device(),
+                frame.width(),
+                frame.height(),
+                self.encode_width,
+                self.encode_height,
+                frame.desc().Format,
+            )?);
+        }
+        let Some(scaler) = self.scaler.as_ref() else {
+            return Err(Error::Encoder("GPU scaler missing".into()));
+        };
+        scaler.scale_into_frame(frame)
+    }
+
+    fn maybe_adapt(&mut self, now: Instant) {
+        let encoded = self.stats.frames_encoded.load(Ordering::Relaxed);
+        if let Some(fps) = self.adaptive.tick(now, self.gate.backpressure(), encoded) {
+            self.gate.set_fps(fps);
+            self.stats.fps_target.store(fps, Ordering::Relaxed);
+        }
     }
 }
 
@@ -62,30 +144,62 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
         let params = ctx.flags;
         params.stats.width.store(params.width, Ordering::Relaxed);
         params.stats.height.store(params.height, Ordering::Relaxed);
-        let encoder = VideoEncoder::new(
+        let audio_setup = if params.audio.is_enabled() {
+            Some(start_pump(
+                params.audio.system,
+                params.audio.microphone,
+                Arc::clone(&params.paused),
+            )?)
+        } else {
+            None
+        };
+        let audio_settings = if audio_setup.is_some() {
+            AudioSettingsBuilder::new()
+        } else {
+            AudioSettingsBuilder::default().disabled(true)
+        };
+        let encoder = match VideoEncoder::new(
             VideoSettingsBuilder::new(params.width, params.height)
                 .sub_type(VideoSettingsSubType::H264)
                 .frame_rate(params.fps)
                 .bitrate(params.bitrate),
-            AudioSettingsBuilder::default().disabled(true),
+            audio_settings,
             ContainerSettingsBuilder::default(),
             &params.path,
-        )
-        .map_err(|e| Error::Encoder(e.to_string()))?;
+        ) {
+            Ok(encoder) => encoder,
+            Err(e) => {
+                drop(audio_setup);
+                return Err(Error::Encoder(e.to_string()));
+            }
+        };
         Ok(Self {
             encoder: Some(encoder),
             gate: FrameGate::recording(params.fps),
             stats: params.stats,
             paused: params.paused,
+            pcm: audio_setup.as_ref().map(|s| Arc::clone(&s.queue)),
+            audio: audio_setup.map(|s| s.pump),
+            scaler: None,
+            encode_width: params.width,
+            encode_height: params.height,
+            adaptive: Adaptive::new(params.fps),
         })
     }
 
     fn on_frame_arrived(
         &mut self,
         frame: &mut Frame<'_>,
-        _capture_control: InternalCaptureControl,
+        capture_control: InternalCaptureControl,
     ) -> std::result::Result<(), Self::Error> {
         self.stats.frames_captured.fetch_add(1, Ordering::Relaxed);
+        if !self.paused.load(Ordering::Relaxed) {
+            if let Err(err) = self.drain_audio() {
+                self.fail_session(&err.to_string());
+                capture_control.stop();
+                return Ok(());
+            }
+        }
         if self.paused.load(Ordering::Relaxed) {
             return Ok(());
         }
@@ -93,6 +207,13 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
             self.stats
                 .frames_dropped
                 .store(self.gate.dropped(), Ordering::Relaxed);
+            self.maybe_adapt(Instant::now());
+            return Ok(());
+        }
+        if let Err(err) = self.ensure_scaled(frame) {
+            self.gate.release();
+            self.fail_session(&err.to_string());
+            capture_control.stop();
             return Ok(());
         }
         let Some(encoder) = self.encoder.as_mut() else {
@@ -107,9 +228,15 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
                 self.stats
                     .frames_dropped
                     .store(self.gate.dropped(), Ordering::Relaxed);
+                self.maybe_adapt(Instant::now());
                 Ok(())
             }
-            Err(e) => Err(Error::Encoder(e.to_string())),
+            Err(e) => {
+                let classified = classify_encode_failure(&e.to_string());
+                self.fail_session(&classified.to_string());
+                capture_control.stop();
+                Ok(())
+            }
         }
     }
 }
@@ -146,6 +273,9 @@ pub fn list_displays() -> crate::Result<Vec<CaptureDisplay>> {
     let mut out = Vec::with_capacity(monitors.len());
     for monitor in monitors {
         let index = monitor.index().map_err(|e| Error::Capture(e.to_string()))?;
+        let device_id = monitor
+            .device_name()
+            .unwrap_or_else(|_| format!("display-{index}"));
         let name = monitor
             .name()
             .or_else(|_| monitor.device_name())
@@ -157,6 +287,7 @@ pub fn list_displays() -> crate::Result<Vec<CaptureDisplay>> {
         out.push(CaptureDisplay {
             index,
             name,
+            device_id,
             width,
             height,
         });
@@ -209,6 +340,10 @@ pub fn start(config: RecordConfig) -> crate::Result<Recording> {
                 Monitor::from_index(*index).map_err(|e| Error::TargetNotFound(e.to_string()))?;
             start_monitor(monitor, config)
         }
+        CaptureTarget::Display { id } => {
+            let monitor = monitor_from_id(id)?;
+            start_monitor(monitor, config)
+        }
         CaptureTarget::WindowTitle(title) => {
             let window = Window::from_contains_name(title)
                 .map_err(|e| Error::TargetNotFound(e.to_string()))?;
@@ -219,6 +354,20 @@ pub fn start(config: RecordConfig) -> crate::Result<Recording> {
             start_window(window, config)
         }
     }
+}
+
+fn monitor_from_id(id: &str) -> crate::Result<Monitor> {
+    let monitors = Monitor::enumerate().map_err(|e| Error::Capture(e.to_string()))?;
+    let mut by_name = None;
+    for monitor in monitors {
+        if monitor.device_name().ok().as_deref() == Some(id) {
+            return Ok(monitor);
+        }
+        if by_name.is_none() && monitor.name().ok().as_deref() == Some(id) {
+            by_name = Some(monitor);
+        }
+    }
+    by_name.ok_or_else(|| Error::TargetNotFound(id.to_string()))
 }
 
 fn start_monitor(monitor: Monitor, config: RecordConfig) -> crate::Result<Recording> {
@@ -247,30 +396,38 @@ where
         ));
     }
     let fps = config.quality.fps();
-    let stats = StatsInner::new(fps);
+    let (encode_width, encode_height) = config.quality.encode_size(width, height);
+    let encoder_kind = probe()
+        .map(|info| info.selected)
+        .unwrap_or(EncoderKind::Software);
+    let stats = StatsInner::new(fps, encoder_kind);
     let paused = Arc::new(AtomicBool::new(false));
     let params = EncoderParams {
-        width,
-        height,
+        width: encode_width,
+        height: encode_height,
         fps,
-        bitrate: default_bitrate_bps(width, height, fps),
+        bitrate: default_bitrate_bps(encode_width, encode_height, fps),
         path: config.output.clone(),
         stats: Arc::clone(&stats),
         paused: Arc::clone(&paused),
+        audio: config.audio,
     };
     let cursor = if config.include_cursor {
         CursorCaptureSettings::WithCursor
     } else {
         CursorCaptureSettings::WithoutCursor
     };
+    let interval_ms = if config.audio.is_enabled() {
+        10
+    } else {
+        (1000 / u64::from(fps.max(1))).max(1)
+    };
     let settings = Settings::new(
         item,
         cursor,
         DrawBorderSettings::WithoutBorder,
         SecondaryWindowSettings::Default,
-        MinimumUpdateIntervalSettings::Custom(Duration::from_millis(
-            (1000 / u64::from(fps.max(1))).max(1),
-        )),
+        MinimumUpdateIntervalSettings::Custom(Duration::from_millis(interval_ms)),
         DirtyRegionSettings::Default,
         ColorFormat::Bgra8,
         params,
@@ -307,10 +464,59 @@ mod tests {
         let _ = fs::remove_file(&output);
         let mut config = RecordConfig::new(&output);
         config.quality = crate::Quality::P720p30;
+        config.audio = crate::AudioConfig::none();
         let recording = start(config).expect("start");
         std::thread::sleep(Duration::from_secs(2));
         let path = recording.stop().expect("stop");
         assert!(path.is_file());
         assert!(fs::metadata(&path).expect("meta").len() > 0);
+    }
+
+    #[test]
+    #[ignore = "requires an interactive Windows desktop session with WASAPI devices"]
+    fn records_primary_display_with_audio() {
+        let dir = std::env::temp_dir();
+        let output = dir.join("lightcapture-hw-audio.mp4");
+        let _ = fs::remove_file(&output);
+        let mut config = RecordConfig::new(&output);
+        config.quality = crate::Quality::P720p30;
+        let mut recording = start(config).expect("start");
+        std::thread::sleep(Duration::from_secs(3));
+        let (path, stats) = recording.stop_inner().expect("stop");
+        assert!(path.is_file());
+        assert!(fs::metadata(&path).expect("meta").len() > 0);
+        assert!(
+            stats.audio_frames_sent > 0,
+            "expected WASAPI samples in the session, drops={}",
+            stats.audio_drops
+        );
+        assert!(
+            stats.width <= 1280 && stats.height <= 720,
+            "720p30 must not encode above 1280x720, got {}x{}",
+            stats.width,
+            stats.height
+        );
+    }
+
+    #[test]
+    #[ignore = "requires an interactive Windows desktop session"]
+    fn records_1080p_preset_not_source_4k() {
+        let dir = std::env::temp_dir();
+        let output = dir.join("lightcapture-hw-1080p.mp4");
+        let _ = fs::remove_file(&output);
+        let mut config = RecordConfig::new(&output);
+        config.quality = crate::Quality::P1080p30;
+        config.audio = crate::AudioConfig::none();
+        let mut recording = start(config).expect("start");
+        std::thread::sleep(Duration::from_secs(2));
+        let (path, stats) = recording.stop_inner().expect("stop");
+        assert!(path.is_file());
+        assert!(fs::metadata(&path).expect("meta").len() > 0);
+        assert!(
+            stats.width <= 1920 && stats.height <= 1080,
+            "1080p30 must not encode above 1920x1080, got {}x{}",
+            stats.width,
+            stats.height
+        );
     }
 }

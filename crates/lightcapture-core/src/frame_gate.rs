@@ -7,6 +7,7 @@ pub struct FrameGate {
     in_flight: u8,
     last_accepted: Option<Instant>,
     dropped: u64,
+    backpressure: u64,
 }
 
 impl FrameGate {
@@ -19,7 +20,14 @@ impl FrameGate {
             in_flight: 0,
             last_accepted: None,
             dropped: 0,
+            backpressure: 0,
         }
+    }
+
+    /// Lower (or raise) the FPS cap without resetting in-flight slots.
+    pub fn set_fps(&mut self, fps: u32) {
+        let fps = fps.max(1);
+        self.min_interval = Duration::from_nanos(1_000_000_000 / u64::from(fps));
     }
 
     /// Two-slot GPU pool used by the recording path.
@@ -33,10 +41,17 @@ impl FrameGate {
         self.dropped
     }
 
+    /// Drops from a full 2-slot pool (encoder behind), not FPS throttling.
+    #[must_use]
+    pub fn backpressure(&self) -> u64 {
+        self.backpressure
+    }
+
     /// Returns whether this frame should be submitted to the encoder.
     pub fn try_accept(&mut self, now: Instant) -> bool {
         if self.in_flight >= self.max_in_flight {
             self.dropped += 1;
+            self.backpressure += 1;
             return false;
         }
         if let Some(last) = self.last_accepted {
@@ -98,5 +113,19 @@ mod tests {
         assert_eq!(gate.dropped(), 1);
         gate.release();
         assert!(gate.try_accept(t0 + Duration::from_millis(60)));
+        assert_eq!(gate.backpressure(), 1);
+    }
+
+    #[test]
+    fn fps_cap_is_not_backpressure() {
+        let mut gate = FrameGate::recording(30);
+        let t0 = Instant::now();
+        assert!(gate.try_accept(t0));
+        gate.release();
+        assert!(!gate.try_accept(t0 + Duration::from_millis(1)));
+        assert_eq!(gate.dropped(), 1);
+        assert_eq!(gate.backpressure(), 0);
+        gate.set_fps(24);
+        assert!(gate.try_accept(t0 + Duration::from_millis(50)));
     }
 }

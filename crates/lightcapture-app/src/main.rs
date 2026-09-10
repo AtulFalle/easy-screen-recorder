@@ -2,6 +2,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod app;
+mod notify;
 mod pump;
 mod settings;
 mod status;

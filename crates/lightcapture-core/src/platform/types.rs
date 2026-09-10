@@ -10,6 +10,8 @@ use crate::Error;
 pub struct CaptureDisplay {
     pub index: usize,
     pub name: String,
+    /// Stable-enough id: `\\.\DISPLAYn` from GDI. Match by [`Self::name`] if this shifts.
+    pub device_id: String,
     pub width: u32,
     pub height: u32,
 }
@@ -50,14 +52,34 @@ impl Recording {
         self.paused.load(Ordering::Relaxed)
     }
 
+    /// Capture/encode thread stored a fatal error and tried to keep the file.
+    #[must_use]
+    pub fn failure(&self) -> Option<String> {
+        self.stats.snapshot().failure
+    }
+
+    #[must_use]
+    pub fn has_failed(&self) -> bool {
+        self.stats.has_failed()
+    }
+
     /// Finalize the MP4 and join the capture thread.
     pub fn stop(mut self) -> crate::Result<PathBuf> {
+        let (path, _) = self.stop_inner()?;
+        Ok(path)
+    }
+
+    pub(crate) fn stop_inner(&mut self) -> crate::Result<(PathBuf, SessionStats)> {
         let stopper = self.stopper.take().ok_or(Error::Stopped)?;
         stopper()?;
-        if self.stats.frames_encoded.load(Ordering::Relaxed) == 0 {
+        let stats = self.stats.snapshot();
+        if stats.frames_encoded == 0 && stats.failure.is_none() {
             return Err(Error::NoFrames);
         }
-        Ok(self.output.clone())
+        if let Some(message) = stats.failure {
+            return Err(crate::classify_encode_failure(&message));
+        }
+        Ok((self.output.clone(), stats))
     }
 }
 
@@ -66,5 +88,26 @@ impl Drop for Recording {
         if let Some(stopper) = self.stopper.take() {
             let _ = stopper();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stats::StatsInner;
+
+    #[test]
+    fn pause_flag_round_trips() {
+        let recording = Recording {
+            output: PathBuf::from("out.mp4"),
+            stats: StatsInner::new(30, crate::EncoderKind::Software),
+            paused: Arc::new(AtomicBool::new(false)),
+            stopper: Some(Box::new(|| Ok(()))),
+        };
+        assert!(!recording.is_paused());
+        recording.set_paused(true);
+        assert!(recording.is_paused());
+        recording.set_paused(false);
+        assert!(!recording.is_paused());
     }
 }

@@ -41,6 +41,10 @@ pub struct RecordArgs {
     #[arg(long, value_enum, default_value_t = QualityArg::P1080p30)]
     pub quality: QualityArg,
 
+    /// Remux the finished MP4 to this RTSP/RTMP URL (`ffmpeg -c copy`).
+    #[arg(long, value_name = "URL")]
+    pub stream_url: Option<String>,
+
     /// Stop after this many seconds. Omit to wait for Ctrl+C.
     #[arg(long)]
     pub duration: Option<u64>,
@@ -48,10 +52,20 @@ pub struct RecordArgs {
     /// Hide the mouse cursor in the recording.
     #[arg(long)]
     pub no_cursor: bool,
+
+    /// Do not capture system (loopback) audio.
+    #[arg(long)]
+    pub no_system_audio: bool,
+
+    /// Do not capture the microphone.
+    #[arg(long)]
+    pub no_mic: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum QualityArg {
+    #[value(name = "720p24")]
+    P720p24,
     #[value(name = "720p30")]
     P720p30,
     #[value(name = "1080p30")]
@@ -63,9 +77,35 @@ pub enum QualityArg {
 impl From<QualityArg> for Quality {
     fn from(value: QualityArg) -> Self {
         match value {
+            QualityArg::P720p24 => Self::P720p24,
             QualityArg::P720p30 => Self::P720p30,
             QualityArg::P1080p30 => Self::P1080p30,
             QualityArg::P1080p60 => Self::P1080p60,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn audio_flags_parse() {
+        let cli = Cli::try_parse_from([
+            "lightcapture-cli",
+            "record",
+            "--no-system-audio",
+            "--no-mic",
+        ])
+        .expect("parse");
+        match cli.command {
+            Command::Record(args) => {
+                assert!(args.no_system_audio);
+                assert!(args.no_mic);
+            }
+            other => panic!("expected record, got {other:?}"),
         }
     }
 }

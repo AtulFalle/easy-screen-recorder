@@ -4,7 +4,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use lightcapture_core::{list_displays, list_windows, probe, start, CaptureTarget, RecordConfig};
+use lightcapture_core::{
+    list_displays, list_windows, probe, publish_file, start, AudioConfig, CaptureTarget,
+    RecordConfig,
+};
 
 use crate::args::{Cli, Command, RecordArgs};
 
@@ -41,8 +44,8 @@ fn probe_cmd() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Display indexes:");
         for display in listed {
             println!(
-                "  [{}] {} ({}x{})",
-                display.index, display.name, display.width, display.height
+                "  [{}] {} ({}) ({}x{})",
+                display.index, display.name, display.device_id, display.width, display.height
             );
         }
     }
@@ -57,9 +60,6 @@ fn windows_cmd() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 fn record_cmd(args: RecordArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let output = args.output.unwrap_or_else(|| {
-        RecordConfig::default_output_in(&std::env::current_dir().unwrap_or_default())
-    });
     let target = if args.foreground {
         CaptureTarget::ForegroundWindow
     } else if let Some(title) = args.window {
@@ -69,10 +69,20 @@ fn record_cmd(args: RecordArgs) -> Result<(), Box<dyn std::error::Error + Send +
     } else {
         CaptureTarget::PrimaryDisplay
     };
+    let output = args.output.unwrap_or_else(|| {
+        RecordConfig::output_path(
+            &std::env::current_dir().unwrap_or_default(),
+            &target.source_slug(),
+        )
+    });
     let mut config = RecordConfig::new(output.clone());
     config.target = target;
     config.quality = args.quality.into();
     config.include_cursor = !args.no_cursor;
+    config.audio = AudioConfig {
+        system: !args.no_system_audio,
+        microphone: !args.no_mic,
+    };
 
     eprintln!("recording to {}", config.output.display());
     let recording = start(config)?;
@@ -89,13 +99,18 @@ fn record_cmd(args: RecordArgs) -> Result<(), Box<dyn std::error::Error + Send +
         if limit.is_some_and(|d| started.elapsed() >= d) {
             break;
         }
+        if recording.has_failed() {
+            break;
+        }
         thread::sleep(Duration::from_millis(250));
         let stats = recording.stats();
         eprint!(
-            "\r{:>3}s  {}x{}  encoded {}  dropped {}  captured {}",
+            "\r{:>3}s  {}x{}  {}  {}fps  encoded {}  dropped {}  captured {}",
             stats.elapsed_secs,
             stats.width,
             stats.height,
+            stats.encoder.as_short(),
+            stats.fps_target,
             stats.frames_encoded,
             stats.frames_dropped,
             stats.frames_captured
@@ -103,7 +118,24 @@ fn record_cmd(args: RecordArgs) -> Result<(), Box<dyn std::error::Error + Send +
         let _ = io::stderr().flush();
     }
     eprintln!();
-    let path = recording.stop()?;
-    eprintln!("saved {}", path.display());
-    Ok(())
+    let path = recording.output().to_path_buf();
+    match recording.stop() {
+        Ok(saved) => {
+            eprintln!("saved {}", saved.display());
+            if let Some(url) = args.stream_url {
+                match publish_file(&saved, &url) {
+                    Ok(()) => eprintln!("published {} to {url}", saved.display()),
+                    Err(err) => eprintln!("{err}"),
+                }
+            }
+            Ok(())
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            if path.is_file() {
+                eprintln!("kept {}", path.display());
+            }
+            Err(err.into())
+        }
+    }
 }
