@@ -1,0 +1,3 @@
+# Conservative Clippy config. CI still denies all warnings with `-D warnings`.
+cognitive-complexity-threshold = 30
+avoid-breaking-exported-api = false

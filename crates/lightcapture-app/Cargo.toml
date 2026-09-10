@@ -1,0 +1,16 @@
+[package]
+name = "lightcapture-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "LightCapture desktop application"
+publish.workspace = true
+
+[[bin]]
+name = "lightcapture"
+path = "src/main.rs"
+
+[dependencies]
+lightcapture-core = { path = "../lightcapture-core" }

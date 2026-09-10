@@ -1,0 +1,15 @@
+---
+description: Rust workspace conventions for LightCapture crates
+globs: "**/*.rs,**/Cargo.toml"
+alwaysApply: false
+---
+
+# Rust workspace
+
+- Members: `crates/lightcapture-core`, `crates/lightcapture-cli`, `crates/lightcapture-app`.
+- Shared metadata lives in `[workspace.package]`. Do not drift edition or license in a member.
+- `lightcapture-core` is a library: return `Result`, use `thiserror` when errors exist, no `unwrap`/`expect` on fallible Windows or I/O in library code.
+- Binaries may `expect` only in `main` after a clear user-facing message is printed.
+- No `Vec` of raw frames. Session stats and settings are plain structs.
+- Prefer `cargo clippy --workspace --all-targets -- -D warnings` over allowing warnings locally.
+- If a third-party Rust skill conflicts with these rules, follow this file.

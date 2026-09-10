@@ -1,0 +1,6 @@
+# Local aliases that match CI. Do not force a default --target here; the
+# rust-toolchain.toml already lists x86_64-pc-windows-msvc.
+
+[alias]
+lint = "clippy --workspace --all-targets -- -D warnings"
+check-ci = "fmt --all -- --check"

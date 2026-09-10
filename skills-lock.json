@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "rust-api-design": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-api-design/SKILL.md",
+      "computedHash": "9f61d46cdeb4bf02241807b2353becfec76d86df65ac642f926f4f8268523c6c"
+    },
+    "rust-cargo-build": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-cargo-build/SKILL.md",
+      "computedHash": "991a61f94b29ac5ccc26780e794e41ad9668ea017f8ff73c888465af9cb9a458"
+    },
+    "rust-cli": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-cli/SKILL.md",
+      "computedHash": "a63710a36339b4f8a675a58f10af8fc3b3cd54d9172681ed6175b4130a9bef4e"
+    },
+    "rust-code-review": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-code-review/SKILL.md",
+      "computedHash": "aac618f00c3654b4ff3eef7604ae593aff5017cce87b361d994bdde5c48f10ab"
+    },
+    "rust-concurrency": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-concurrency/SKILL.md",
+      "computedHash": "628165561597d56b8f9c8ebcc4ebcf90baac82d592b1465a1df9e9fb4f2dda4d"
+    },
+    "rust-module-layout": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-module-layout/SKILL.md",
+      "computedHash": "cc0fdaf92dec5486478e549e92f2c38fc39667cb78444a0471df97e5f736c80f"
+    },
+    "rust-performance": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-performance/SKILL.md",
+      "computedHash": "09411685d5fa4a24216021a8ea10563976a95ba4e912df787f1260b11375f3b6"
+    },
+    "rust-style-clippy": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-style-clippy/SKILL.md",
+      "computedHash": "e8f75deeb3c952cad431a5a4076ece5322f9a6695311fc93be259cc1b77e45b2"
+    },
+    "rust-testing": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-testing/SKILL.md",
+      "computedHash": "921bc5c4e35e0d98dba51828a83d438e383ff41219f50f73737247a1265ca763"
+    },
+    "rust-unsafe-ffi": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-unsafe-ffi/SKILL.md",
+      "computedHash": "7724cd7d2f07761339ce3fffb123db3537737e0138955ba4729e3b4be4e85dff"
+    },
+    "rust-workspace": {
+      "source": "full-stack-skills/rust-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-workspace/SKILL.md",
+      "computedHash": "71258dec41a97bd4bff6a07dc583f530d4fcb3168fca8bcd02fad3626d483dac"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+---
+description: Win32 and unsafe rules for LightCapture recording code
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Windows unsafe
+
+- Prefer the `windows` crate’s safe wrappers. Keep `unsafe` in small functions next to the FFI.
+- Every `unsafe` block needs a `// SAFETY:` comment listing the invariants.
+- Enable `#![deny(unsafe_op_in_unsafe_fn)]` in crates that contain `unsafe`.
+- Never `Map` a capture `ID3D11Texture2D` to CPU on the encode path. Frames stay on the GPU until the encoder takes them.
+- COM/WinRT objects must have clear ownership (drop order, `Release` via the wrapper). Do not clone raw pointers without documenting aliasing.
+- Isolate WGC, Media Foundation, and WASAPI behind modules in `lightcapture-core`, not in the app crate.

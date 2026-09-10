@@ -1,0 +1,14 @@
+---
+description: LightCapture product constraints for every change
+alwaysApply: true
+---
+
+# LightCapture product
+
+- Local-first: screen → this machine → local file. No accounts or cloud in MVP.
+- No Chromium, Electron, or Tauri in the recording path.
+- Encode once. Extra outputs subscribe to the same H.264 packets; never start a second video encoder.
+- Bounded memory: D3D11 frame pool size 2. Drop on backpressure. No unbounded raw-frame queues.
+- Homelab, MediaMTX, replay buffer, region capture, HEVC/AV1 are out of MVP.
+- Engine lives in `lightcapture-core`. CLI and app are fronts only.
+- Do not add capture/encode/audio/UI crates until the user asks for that product slice.

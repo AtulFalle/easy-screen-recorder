@@ -1,0 +1,18 @@
+---
+description: Local CI gate before claiming LightCapture work is done
+alwaysApply: true
+---
+
+# CI gate
+
+Before claiming a change is complete, run `.\scripts\check.ps1` or the same commands:
+
+```
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+- Do not skip clippy. Do not use `--no-verify` on commits unless the user asked.
+- GPU capture/encode tests that need a display or hardware MFT stay `#[ignore]` so Windows GitHub-hosted runners still go green.
+- Live preview of the recording is not an MVP CI concern (preview is out of MVP).
