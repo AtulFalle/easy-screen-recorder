@@ -42,7 +42,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     let displays = list_displays().unwrap_or_default();
     let mut tray = TrayUi::new(&settings, &displays, hotkeys)?;
-    let mut bar = RecorderBar::new()?;
+    let mut bar = RecorderBar::new(&settings)?;
     let mut recorded_at: Option<Instant> = None;
     let mut recording: Option<Recording> = None;
     let mut error: Option<String> = None;
@@ -173,6 +173,7 @@ fn handle_command(
                     }
                 }
             }
+            *recorded_at = None;
             tray.set_recording(false);
             pump::request_quit();
         }

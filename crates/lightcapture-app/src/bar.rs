@@ -4,7 +4,9 @@ use std::sync::Mutex;
 
 use lightcapture_core::{list_displays, list_windows, CaptureDisplay};
 use windows::core::w;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{
+    GetLastError, ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, RECT, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     GetStockObject, COLOR_WINDOW, DEFAULT_GUI_FONT, HBRUSH, HFONT,
 };
@@ -71,8 +73,8 @@ pub struct RecorderBar {
 }
 
 impl RecorderBar {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        register_class()?;
+    pub fn new(settings: &Settings) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let instance = register_class()?;
         let inner = Box::new(BarInner {
             hwnd: HWND::default(),
             mode: HWND::default(),
@@ -91,8 +93,6 @@ impl RecorderBar {
             suppress: false,
         });
         let raw = Box::into_raw(inner);
-        // SAFETY: None requests the handle of this process; the Windows API documents that as valid.
-        let instance = unsafe { GetModuleHandleW(None) }?;
         let (x, y) = bar_origin();
         let hwnd = unsafe {
             // SAFETY: CLASS_NAME is a static class we just registered; `raw` is a valid BarInner
@@ -116,13 +116,21 @@ impl RecorderBar {
             Ok(hwnd) => hwnd,
             Err(err) => {
                 drop(unsafe {
-                    // SAFETY: CreateWindowExW failed before WM_CREATE; we still own the Box at `raw`.
+                    // SAFETY: WM_CREATE either did not run, or returned -1 without storing
+                    // USERDATA, so WM_DESTROY did not take the Box. We still own `raw`.
                     Box::from_raw(raw)
                 });
                 return Err(err.into());
             }
         };
         let bar = Self { hwnd };
+        with_inner(hwnd, |state| {
+            state.suppress = true;
+            select_source(state, &settings.source);
+            set_check_if_changed(state.system, settings.audio.system);
+            set_check_if_changed(state.mic, settings.audio.microphone);
+            state.suppress = false;
+        });
         bar.show();
         Ok(bar)
     }
@@ -165,11 +173,11 @@ impl RecorderBar {
     pub fn sync(&self, settings: &Settings, view: &BarView) {
         with_inner(self.hwnd, |state| {
             state.suppress = true;
-            fill_mode(state);
-            select_source(state, &settings.source);
-            set_check(state.system, settings.audio.system);
-            set_check(state.mic, settings.audio.microphone);
             let idle = !view.recording;
+            if idle {
+                set_check_if_changed(state.system, settings.audio.system);
+                set_check_if_changed(state.mic, settings.audio.microphone);
+            }
             unsafe {
                 // SAFETY: child HWNDs were created in WM_CREATE and remain valid until WM_DESTROY.
                 let _ = EnableWindow(state.mode, idle);
@@ -208,7 +216,7 @@ impl Drop for RecorderBar {
     }
 }
 
-fn register_class() -> windows::core::Result<()> {
+fn register_class() -> windows::core::Result<windows::Win32::Foundation::HMODULE> {
     // SAFETY: None requests the handle of this process.
     let instance = unsafe { GetModuleHandleW(None) }?;
     let class = WNDCLASSW {
@@ -221,11 +229,18 @@ fn register_class() -> windows::core::Result<()> {
         lpszClassName: CLASS_NAME,
         ..Default::default()
     };
-    unsafe {
+    let atom = unsafe {
         // SAFETY: `class` is fully initialized with a valid instance, class name, and WndProc.
-        RegisterClassW(&class);
+        RegisterClassW(&class)
+    };
+    if atom == 0 {
+        // SAFETY: called immediately after RegisterClassW so the last-error is that call.
+        let err = unsafe { GetLastError() };
+        if err != ERROR_CLASS_ALREADY_EXISTS {
+            return Err(windows::core::Error::from_win32());
+        }
     }
-    Ok(())
+    Ok(instance)
 }
 
 fn bar_origin() -> (i32, i32) {
@@ -255,10 +270,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let create = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
             let state = create.lpCreateParams as *mut BarInner;
             unsafe {
-                // SAFETY: hwnd is the window being created; storing the BarInner pointer for later messages.
-                SetWindowLongPtrW(hwnd, GWLP_USERDATA, state as isize);
-            }
-            unsafe {
                 // SAFETY: `state` is the Box we passed as lpParam in CreateWindowExW.
                 (*state).hwnd = hwnd;
             }
@@ -267,6 +278,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 &mut *state
             }) {
                 eprintln!("{err}");
+                // Leave USERDATA unset so WM_DESTROY does not take the Box; CreateWindowExW's
+                // Err path still owns `raw` and will `from_raw` it.
+                return LRESULT(-1);
+            }
+            unsafe {
+                // SAFETY: hwnd is the window being created; children exist, so the window may own BarInner.
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, state as isize);
             }
             let excluded = unsafe {
                 // SAFETY: hwnd is the window currently being created.
@@ -279,7 +297,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 }
                 set_text(
                     unsafe {
-                        // SAFETY: status HWND may still be default if create_children failed.
+                        // SAFETY: status HWND was created before this affinity attempt.
                         (*state).status
                     },
                     "Toolbar may appear in the recording (exclude-from-capture failed)",
@@ -708,6 +726,12 @@ fn set_check(hwnd: HWND, checked: bool) {
             Some(WPARAM(if checked { 1 } else { 0 })),
             None,
         );
+    }
+}
+
+fn set_check_if_changed(hwnd: HWND, checked: bool) {
+    if is_checked(hwnd) != checked {
+        set_check(hwnd, checked);
     }
 }
 
