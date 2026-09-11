@@ -19,7 +19,9 @@ use windows_capture::settings::{
 use windows_capture::window::Window;
 
 use crate::adaptive::Adaptive;
-use crate::audio::{start_pump, AudioPump, PcmQueue};
+use crate::audio::{
+    missing_audio_frames, silence_i16_le, start_pump, AudioPump, PcmQueue, CHUNK_FRAMES,
+};
 use crate::config::{
     default_bitrate_bps, even_dimension, AudioConfig, CaptureTarget, RecordConfig,
 };
@@ -54,20 +56,67 @@ struct CaptureHandler {
     encode_width: u32,
     encode_height: u32,
     adaptive: Adaptive,
+    first_video_hns: Option<i64>,
+    last_video_hns: Option<i64>,
 }
 
 impl CaptureHandler {
     fn finish_encoder(&mut self) -> crate::Result<()> {
-        if let Some(mut pump) = self.audio.take() {
-            pump.stop();
-        }
-        self.drain_audio()?;
-        if let Some(encoder) = self.encoder.take() {
+        let encoder = self.take_encoder_after_audio()?;
+        if let Some(encoder) = encoder {
             encoder
                 .finish()
                 .map_err(|e| Error::Encoder(e.to_string()))?;
         }
         Ok(())
+    }
+
+    fn take_encoder_after_audio(&mut self) -> crate::Result<Option<VideoEncoder>> {
+        if let Some(mut pump) = self.audio.take() {
+            pump.stop();
+        }
+        self.drain_audio()?;
+        self.pad_audio_to_video()?;
+        Ok(self.encoder.take())
+    }
+
+    fn pad_audio_to_video(&mut self) -> crate::Result<()> {
+        if self.pcm.is_none() {
+            return Ok(());
+        }
+        let Some(encoder) = self.encoder.as_mut() else {
+            return Ok(());
+        };
+        let (Some(first), Some(last)) = (self.first_video_hns, self.last_video_hns) else {
+            return Ok(());
+        };
+        let video_hns = last.saturating_sub(first).max(0) as u64;
+        let sent = self.stats.audio_frames_sent.load(Ordering::Relaxed);
+        let mut missing = missing_audio_frames(sent, video_hns);
+        while missing > 0 {
+            let frames = usize::try_from(missing.min(CHUNK_FRAMES as u64)).unwrap_or(0);
+            if frames == 0 {
+                break;
+            }
+            encoder
+                .send_audio_buffer(&silence_i16_le(frames), 0)
+                .map_err(|e| Error::Encoder(e.to_string()))?;
+            self.stats
+                .audio_frames_sent
+                .fetch_add(frames as u64, Ordering::Relaxed);
+            missing -= frames as u64;
+        }
+        Ok(())
+    }
+
+    fn note_video_timestamp(&mut self, frame: &Frame<'_>) {
+        let Ok(ts) = frame.timestamp() else {
+            return;
+        };
+        if self.first_video_hns.is_none() {
+            self.first_video_hns = Some(ts.Duration);
+        }
+        self.last_video_hns = Some(ts.Duration);
     }
 
     fn drain_audio(&mut self) -> crate::Result<()> {
@@ -184,6 +233,8 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
             encode_width: params.width,
             encode_height: params.height,
             adaptive: Adaptive::new(params.fps),
+            first_video_hns: None,
+            last_video_hns: None,
         })
     }
 
@@ -224,6 +275,7 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
         self.gate.release();
         match send {
             Ok(()) => {
+                self.note_video_timestamp(frame);
                 self.stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
                 self.stats
                     .frames_dropped
@@ -436,12 +488,19 @@ where
         CaptureHandler::start_free_threaded(settings).map_err(|e| Error::Capture(e.to_string()))?;
     let output = config.output.clone();
     let stopper = Box::new(move || {
-        {
+        let encoder = {
             let callback = control.callback();
             let mut handler = callback.lock();
-            handler.finish_encoder()?;
-        }
-        control.stop().map_err(|e| Error::Capture(e.to_string()))
+            handler.take_encoder_after_audio()?
+        };
+        let stop_result = control.stop().map_err(|e| Error::Capture(e.to_string()));
+        let finish_result = if let Some(encoder) = encoder {
+            encoder.finish().map_err(|e| Error::Encoder(e.to_string()))
+        } else {
+            Ok(())
+        };
+        stop_result?;
+        finish_result
     });
     Ok(Recording {
         output,

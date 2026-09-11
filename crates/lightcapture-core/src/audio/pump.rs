@@ -2,10 +2,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::audio::mix::{
-    f32_to_i16_le, mix_stereo, pcm_to_output_f32, CHUNK_FRAMES, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE,
+    f32_to_i16_le, mix_stereo, pcm_to_output_f32, should_emit_mix_chunk, should_emit_silence_tick,
+    silence_i16_le, CHUNK_FRAMES, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE,
 };
 use crate::audio::queue::PcmQueue;
 use crate::audio::wasapi::{ComInit, WasapiStream};
@@ -116,8 +117,10 @@ fn run_pump(
 
     let mut system_buf = Vec::new();
     let mut mic_buf = Vec::new();
-    let drive_system = system.is_some();
+    let system_open = system.is_some();
+    let mic_open = mic.is_some();
     let chunk_samples = CHUNK_FRAMES * OUTPUT_CHANNELS;
+    let mut last_emit = Instant::now();
 
     while !stop.load(Ordering::SeqCst) {
         if let Some(stream) = system.as_ref() {
@@ -138,13 +141,25 @@ fn run_pump(
         if paused.load(Ordering::Relaxed) {
             system_buf.clear();
             mic_buf.clear();
+            last_emit = Instant::now();
             continue;
         }
 
-        while ready_chunk(drive_system, system_buf.len(), mic_buf.len(), chunk_samples) {
+        while should_emit_mix_chunk(
+            system_open,
+            mic_open,
+            system_buf.len(),
+            mic_buf.len(),
+            chunk_samples,
+        ) {
             let a = take_or_pad(&mut system_buf, chunk_samples);
             let b = take_or_pad(&mut mic_buf, chunk_samples);
             queue.push(f32_to_i16_le(&mix_stereo(&a, &b)));
+            last_emit = Instant::now();
+        }
+        if should_emit_silence_tick(false, last_emit.elapsed()) {
+            queue.push(silence_i16_le(CHUNK_FRAMES));
+            last_emit = Instant::now();
         }
     }
     if !system_buf.is_empty() || !mic_buf.is_empty() {
@@ -159,19 +174,6 @@ fn append_pcm(buf: &mut Vec<f32>, stream: &WasapiStream) {
         if !bytes.is_empty() {
             buf.extend(pcm_to_output_f32(&bytes, stream.format()));
         }
-    }
-}
-
-fn ready_chunk(
-    drive_system: bool,
-    system_len: usize,
-    mic_len: usize,
-    chunk_samples: usize,
-) -> bool {
-    if drive_system {
-        system_len >= chunk_samples
-    } else {
-        mic_len >= chunk_samples
     }
 }
 

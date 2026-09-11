@@ -3,6 +3,12 @@
 use std::time::Duration;
 
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+use windows::Win32::UI::Controls::{
+    InitCommonControlsEx, ICC_STANDARD_CLASSES, ICC_WIN95_CLASSES, INITCOMMONCONTROLSEX,
+};
+use windows::Win32::UI::HiDpi::{
+    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, PeekMessageW, PostQuitMessage, TranslateMessage, MSG, PM_REMOVE, WM_QUIT,
 };
@@ -12,6 +18,15 @@ pub fn init_com() {
     // SAFETY: Called once on the UI thread before creating COM-backed UI.
     // S_FALSE (already initialized) is treated as success by the windows crate.
     let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    // SAFETY: Best-effort; the embedded manifest already requests Per-Monitor V2.
+    // A failure here means DPI was already set or the API is missing.
+    let _ = unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    let icc = INITCOMMONCONTROLSEX {
+        dwSize: std::mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
+        dwICC: ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES,
+    };
+    // SAFETY: `icc` is a valid INITCOMMONCONTROLSEX on this thread before any controls.
+    let _ = unsafe { InitCommonControlsEx(&icc) };
 }
 
 pub fn request_quit() {

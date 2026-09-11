@@ -8,6 +8,7 @@ mod pump;
 #[cfg(windows)]
 mod wasapi;
 
+pub(crate) use mix::{missing_audio_frames, silence_i16_le, CHUNK_FRAMES};
 pub(crate) use queue::PcmQueue;
 
 #[cfg(windows)]
