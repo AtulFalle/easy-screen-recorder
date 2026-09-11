@@ -10,7 +10,7 @@ alwaysApply: true
 - Encode once. Extra outputs subscribe to the same H.264 packets; never start a second video encoder.
 - Bounded memory: D3D11 frame pool size 2. Drop on backpressure. No unbounded raw-frame queues.
 - Engine lives in `lightcapture-core`. CLI and app are fronts only.
-- Desktop front is a tray app in `lightcapture-app`. Do not add egui until asked.
+- Desktop front is a tray app plus a compact Win32 recorder bar in `lightcapture-app`. Do not add egui until asked.
 
 ## Roadmap gates
 

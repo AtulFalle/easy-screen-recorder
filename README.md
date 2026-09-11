@@ -20,7 +20,7 @@ Requires Windows 10 version 1903 or later (x64).
 | --- | --- |
 | `crates/lightcapture-core` | Recording engine (capture, encode, mux) |
 | `crates/lightcapture-cli` | Headless CLI |
-| `crates/lightcapture-app` | Tray app (`Ctrl+Shift+R`, `Ctrl+Shift+P` pause, quality/source/profile/recent) |
+| `crates/lightcapture-app` | Tray app + compact recorder bar on launch (`Ctrl+Shift+R`, `Ctrl+Shift+P` pause, Screen/Window on the bar; tray for quality/profile/recent and hide-to-tray) |
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Requires Windows 10 version 1903 or later (x64).
 
 ## Tray app
 
-The app sits in the notification area (no main window). `Ctrl+Shift+R` starts and stops recording. `Ctrl+Shift+P` pauses and resumes (video and audio freeze; the MP4 timeline does not insert a gap). Right-click the icon for pause, quality, Work/Game/Silent profiles, capture source, output folder, cursor, recent files, and MediaMTX stream toggle. Recordings default to `Videos\LightCapture` as `LightCapture-YYYYMMDD-HHMMSS-source.mp4`. A stop toast shows Open / Show in folder. Stream URL lives in `%APPDATA%\LightCapture\settings.json` (`stream_url`, default `rtsp://127.0.0.1:8554/live`). Ingest needs `ffmpeg` on PATH; **Open stream viewer** opens the HLS page in the default browser.
+On launch the app shows a compact always-on-top recorder bar (Screen/Window, System/Mic, Record). Closing the bar hides it to the notification area; recording continues. Left-click the tray icon or **Show recorder** brings the bar back. The tray remains for quality, profiles, output folder, cursor, recent files, stream toggle, and other options. `Ctrl+Shift+R` starts and stops recording. `Ctrl+Shift+P` pauses and resumes (video and audio freeze; the MP4 timeline does not insert a gap). Right-click the icon for pause, quality, Work/Game/Silent profiles, capture source, output folder, cursor, recent files, and MediaMTX stream toggle. Recordings default to `Videos\LightCapture` as `LightCapture-YYYYMMDD-HHMMSS-source.mp4`. A stop toast shows Open / Show in folder. Stream URL lives in `%APPDATA%\LightCapture\settings.json` (`stream_url`, default `rtsp://127.0.0.1:8554/live`). Ingest needs `ffmpeg` on PATH; **Open stream viewer** opens the HLS page in the default browser.
 
 From source (one-time compile, then run the exe):
 

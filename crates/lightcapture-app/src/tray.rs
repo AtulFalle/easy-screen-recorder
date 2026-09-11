@@ -2,7 +2,7 @@ use lightcapture_core::CaptureDisplay;
 use tray_icon::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
-use crate::settings::{ProfileId, QualitySetting, Settings, SourceSetting};
+use crate::settings::{AudioSetting, ProfileId, QualitySetting, Settings, SourceSetting};
 use crate::status;
 
 pub const ID_TOGGLE: &str = "toggle";
@@ -25,6 +25,7 @@ pub const ID_RECENT_OPEN_PREFIX: &str = "recent-open-";
 pub const ID_RECENT_SHOW_PREFIX: &str = "recent-show-";
 pub const ID_STREAM: &str = "stream";
 pub const ID_STREAM_VIEW: &str = "stream-view";
+pub const ID_SHOW_BAR: &str = "show-bar";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
@@ -40,6 +41,8 @@ pub enum Command {
     ShowRecent(usize),
     ToggleStream,
     OpenStreamViewer,
+    SetAudio(AudioSetting),
+    ShowBar,
     Exit,
 }
 
@@ -63,6 +66,7 @@ pub fn parse_menu_id(id: &str) -> Option<Command> {
         ID_PROFILE_SILENT => Some(Command::Profile(ProfileId::Silent)),
         ID_STREAM => Some(Command::ToggleStream),
         ID_STREAM_VIEW => Some(Command::OpenStreamViewer),
+        ID_SHOW_BAR => Some(Command::ShowBar),
         other => {
             if let Some(rest) = other.strip_prefix(ID_SOURCE_DISPLAY_PREFIX) {
                 return rest.parse().ok().map(|index| {
@@ -118,6 +122,7 @@ pub struct TrayUi {
     recent_empty: Option<MenuItem>,
     stream: CheckMenuItem,
     stream_view: MenuItem,
+    show_bar: MenuItem,
     exit: MenuItem,
     idle_icon: Icon,
     recording_icon: Icon,
@@ -217,6 +222,7 @@ impl TrayUi {
             None,
         );
         let stream_view = MenuItem::with_id(ID_STREAM_VIEW, "Open stream viewer", true, None);
+        let show_bar = MenuItem::with_id(ID_SHOW_BAR, "Show recorder", true, None);
         let exit = MenuItem::with_id(ID_EXIT, "Exit", true, None);
         let mut ui = Self {
             tray: TrayIconBuilder::new()
@@ -245,6 +251,7 @@ impl TrayUi {
             recent_empty: recent.empty,
             stream,
             stream_view,
+            show_bar,
             exit,
             idle_icon,
             recording_icon,
@@ -374,6 +381,7 @@ impl TrayUi {
             recent_empty: self.recent_empty.as_ref(),
             stream: &self.stream,
             stream_view: &self.stream_view,
+            show_bar: &self.show_bar,
             exit: &self.exit,
         })?;
         self.tray.set_menu(Some(Box::new(menu)));
@@ -474,6 +482,7 @@ struct MenuBits<'a> {
     recent_empty: Option<&'a MenuItem>,
     stream: &'a CheckMenuItem,
     stream_view: &'a MenuItem,
+    show_bar: &'a MenuItem,
     exit: &'a MenuItem,
 }
 
@@ -505,6 +514,7 @@ fn assemble_menu(bits: &MenuBits<'_>) -> Result<Menu, tray_icon::menu::Error> {
     Menu::with_items(&[
         bits.toggle,
         bits.pause,
+        bits.show_bar,
         &PredefinedMenuItem::separator(),
         &quality,
         &profile,

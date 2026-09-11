@@ -113,6 +113,9 @@ pub enum SourceSetting {
         name: String,
     },
     Foreground,
+    Window {
+        title: String,
+    },
 }
 
 impl SourceSetting {
@@ -126,6 +129,7 @@ impl SourceSetting {
             }
             Self::Display { index, .. } => CaptureTarget::DisplayIndex(*index),
             Self::Foreground => CaptureTarget::ForegroundWindow,
+            Self::Window { title } => CaptureTarget::WindowTitle(title.clone()),
         }
     }
 
@@ -153,6 +157,7 @@ impl SourceSetting {
                     CaptureTarget::PrimaryDisplay
                 }
             }
+            Self::Window { title } => CaptureTarget::WindowTitle(title.clone()),
         }
     }
 
@@ -170,6 +175,7 @@ impl SourceSetting {
                     format!("display{index}")
                 }
             }
+            Self::Window { title } => sanitize_source_slug(title),
         }
     }
 }
