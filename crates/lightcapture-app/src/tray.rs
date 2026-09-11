@@ -41,7 +41,6 @@ pub enum Command {
     ShowRecent(usize),
     ToggleStream,
     OpenStreamViewer,
-    #[allow(dead_code)] // Recorder bar constructs this; app loop wiring is Task 4.
     SetAudio(AudioSetting),
     ShowBar,
     Exit,

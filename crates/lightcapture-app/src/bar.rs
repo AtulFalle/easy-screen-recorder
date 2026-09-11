@@ -1,5 +1,4 @@
 #![deny(unsafe_op_in_unsafe_fn)]
-#![allow(dead_code)] // Public API is wired in Task 4; keep the module compiling unused.
 
 use std::sync::Mutex;
 
@@ -144,6 +143,7 @@ impl RecorderBar {
         }
     }
 
+    #[allow(dead_code)] // Public API; the bar hides via WM_CLOSE, not the session loop.
     pub fn hide(&self) {
         unsafe {
             // SAFETY: `self.hwnd` is a window created in `new` and not yet destroyed.

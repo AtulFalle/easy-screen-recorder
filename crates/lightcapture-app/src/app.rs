@@ -1,6 +1,6 @@
 use std::fs;
 use std::process::Command as ProcessCommand;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
@@ -8,7 +8,9 @@ use lightcapture_core::{
     list_displays, publish_file, start, view_url, Error, RecordConfig, Recording,
 };
 use tray_icon::menu::MenuEvent;
+use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
 
+use crate::bar::{BarView, RecorderBar};
 use crate::notify;
 use crate::pump;
 use crate::settings::{Settings, SourceSetting};
@@ -40,6 +42,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     let displays = list_displays().unwrap_or_default();
     let mut tray = TrayUi::new(&settings, &displays, hotkeys)?;
+    let mut bar = RecorderBar::new()?;
+    let mut recorded_at: Option<Instant> = None;
     let mut recording: Option<Recording> = None;
     let mut error: Option<String> = None;
 
@@ -55,8 +59,34 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 &mut recording,
                 &mut error,
                 &mut tray,
+                &mut bar,
+                &mut recorded_at,
                 hotkeys,
             );
+        }
+
+        for command in bar.take_commands() {
+            handle_command(
+                command,
+                &mut settings,
+                &mut recording,
+                &mut error,
+                &mut tray,
+                &mut bar,
+                &mut recorded_at,
+                hotkeys,
+            )?;
+        }
+
+        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                bar.show();
+            }
         }
 
         while let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -67,6 +97,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     &mut recording,
                     &mut error,
                     &mut tray,
+                    &mut bar,
+                    &mut recorded_at,
                     hotkeys,
                 )?;
             }
@@ -83,6 +115,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         &mut recording,
                         &mut error,
                         &mut tray,
+                        &mut bar,
+                        &mut recorded_at,
                         hotkeys,
                     )?;
                 }
@@ -90,6 +124,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
 
         refresh_tooltip(&tray, &recording, &error, hotkeys);
+        sync_bar(&bar, &settings, &recording, &error, recorded_at);
     }
 
     if let Some(active) = recording.take() {
@@ -107,17 +142,20 @@ pub fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_command(
     command: Command,
     settings: &mut Settings,
     recording: &mut Option<Recording>,
     error: &mut Option<String>,
     tray: &mut TrayUi,
+    bar: &mut RecorderBar,
+    recorded_at: &mut Option<Instant>,
     hotkeys: HotkeyStatus,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let is_recording = recording.is_some();
     match command {
-        Command::Toggle => toggle(settings, recording, error, tray)?,
+        Command::Toggle => toggle(settings, recording, error, tray, recorded_at)?,
         Command::Pause => {
             if let Some(active) = recording.as_ref() {
                 let paused = !active.is_paused();
@@ -190,7 +228,7 @@ fn handle_command(
             settings.audio = audio;
             persist(settings, tray);
         }
-        Command::ShowBar => {}
+        Command::ShowBar => bar.show(),
     }
     refresh_tooltip(tray, recording, error, hotkeys);
     Ok(())
@@ -241,6 +279,24 @@ fn persist(settings: &Settings, tray: &TrayUi) {
     tray.apply_settings(settings);
 }
 
+fn sync_bar(
+    bar: &RecorderBar,
+    settings: &Settings,
+    recording: &Option<Recording>,
+    error: &Option<String>,
+    recorded_at: Option<Instant>,
+) {
+    bar.sync(
+        settings,
+        &BarView {
+            recording: recording.is_some(),
+            paused: recording.as_ref().is_some_and(Recording::is_paused),
+            elapsed: recorded_at.map(|t| t.elapsed()).unwrap_or_default(),
+            status: error.clone(),
+        },
+    );
+}
+
 fn persist_and_refresh_menu(settings: &Settings, tray: &mut TrayUi, recording: bool) {
     if let Err(err) = settings.save() {
         eprintln!("could not save settings: {err}");
@@ -255,8 +311,10 @@ fn toggle(
     recording: &mut Option<Recording>,
     error: &mut Option<String>,
     tray: &mut TrayUi,
+    recorded_at: &mut Option<Instant>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(active) = recording.take() {
+        *recorded_at = None;
         finish_recording(active, settings, error);
         tray.set_recording(false);
         persist_and_refresh_menu(settings, tray, false);
@@ -279,6 +337,7 @@ fn toggle(
         Ok(active) => {
             error.take();
             *recording = Some(active);
+            *recorded_at = Some(Instant::now());
             tray.set_recording(true);
         }
         Err(err) => {
