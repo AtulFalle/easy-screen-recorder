@@ -185,6 +185,12 @@ fn handle_command(
                 persist(settings, tray);
             }
         }
+        Command::SetAudio(_) if is_recording => {}
+        Command::SetAudio(audio) => {
+            settings.audio = audio;
+            persist(settings, tray);
+        }
+        Command::ShowBar => {}
     }
     refresh_tooltip(tray, recording, error, hotkeys);
     Ok(())
