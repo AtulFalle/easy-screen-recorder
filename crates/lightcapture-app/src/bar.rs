@@ -97,7 +97,7 @@ impl RecorderBar {
         let (x, y) = bar_origin();
         let hwnd = unsafe {
             // SAFETY: CLASS_NAME is a static class we just registered; `raw` is a valid BarInner
-            // pointer passed as lpParam and stored in WM_CREATE (or leaked only if create fails).
+            // pointer passed as lpParam and stored in WM_CREATE on success.
             CreateWindowExW(
                 WS_EX_TOPMOST,
                 CLASS_NAME,
@@ -112,7 +112,17 @@ impl RecorderBar {
                 Some(instance.into()),
                 Some(raw.cast()),
             )
-        }?;
+        };
+        let hwnd = match hwnd {
+            Ok(hwnd) => hwnd,
+            Err(err) => {
+                drop(unsafe {
+                    // SAFETY: CreateWindowExW failed before WM_CREATE; we still own the Box at `raw`.
+                    Box::from_raw(raw)
+                });
+                return Err(err.into());
+            }
+        };
         let bar = Self { hwnd };
         bar.show();
         Ok(bar)
