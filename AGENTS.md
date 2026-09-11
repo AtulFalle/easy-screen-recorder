@@ -21,7 +21,7 @@ Roadmap (see `docs/product/prd.md`):
 
 - `lightcapture-core` — engine library. No UI.
 - `lightcapture-cli` — headless front on core.
-- `lightcapture-app` — tray front on core (`Ctrl+Shift+R`, `Ctrl+Shift+P` pause, options menu).
+- `lightcapture-app` — tray + compact recorder bar on core (`Ctrl+Shift+R`, `Ctrl+Shift+P` pause, Screen/Window on the bar).
 - **Installer (in):** Inno Setup 6 (`installer/LightCapture.iss`). Tagged releases upload `LightCapture-Setup-*.exe` only. Auto-updater stays parked.
 
 ## Verify before claiming done

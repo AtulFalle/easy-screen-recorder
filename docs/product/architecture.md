@@ -62,7 +62,7 @@ At session start: NVIDIA MFT → Intel Quick Sync MFT → AMD AMF MFT → softwa
 
 ## GPU scaler (MVP1)
 
-Quality presets (`720p30`, `1080p30`, `1080p60`) GPU-scale to fit the preset box before encode. A 4K monitor at 1080p30 must not encode 4K. Source pixels are never upscaled. The scaler uses D3D11 Video Processor when the GPU accepts BGRA, otherwise a bilinear fullscreen-triangle blit. Scaled pixels stay on the GPU; `windows-capture` still sees encode-sized content in the frame’s top-left (it copies rather than scales).
+Quality presets (`720p30`, `1080p30`, `1080p60`) GPU-scale to fit the preset box before encode. A 4K monitor at 1080p30 must not encode 4K. Source pixels are never upscaled. The scaler uses D3D11 Video Processor when the GPU accepts BGRA, otherwise a bilinear fullscreen-triangle blit. Scaled pixels stay on the GPU; `windows-capture` still sees encode-sized content in the frame's top-left (it copies rather than scales).
 
 ## Pause (MVP1 UX)
 
@@ -74,9 +74,9 @@ Write MP4 incrementally. Disk-full or encoder-lost: stop cleanly and keep bytes 
 
 ## UI
 
-Tray-only (`lightcapture-app`): notification-area icon, `Ctrl+Shift+R`, right-click menu for quality / Work·Game·Silent profiles / display / foreground window / output folder / cursor / recent files. Tooltip shows encoder, FPS, encode size, encoded/dropped, elapsed, and this-process CPU/RAM. Stop (and disk-full / encoder-lost) posts one Windows toast with the file path. No visible main window and no live preview (preview costs GPU/VRAM and fights “stay out of the way”).
+Tray + compact recorder bar (`lightcapture-app`): on launch, a small always-on-top Win32 toolbar lists Screen/Window, System/Mic, and Record. While recording it shows elapsed, Pause, and Stop. Close hides to the tray (recording continues). Left-click the tray icon or **Show recorder** shows the bar again. Tray Exit quits. The bar HWND uses `WDA_EXCLUDEFROMCAPTURE` so WGC display capture omits it. No live preview.
 
-Displays persist by GDI device id (`\\.\DISPLAYn`) and friendly name, not a shifting index. Default filenames are `LightCapture-YYYYMMDD-HHMMSS-source.mp4`. A settings window / egui stays parked. Stream controls are tray toggle + `stream_url` in settings.json; ingest is `ffmpeg -c copy` of the finished file; open MediaMTX playback in the default browser — no in-process WebRTC viewer.
+Hotkeys `Ctrl+Shift+R` / `Ctrl+Shift+P` and the tray menu still start/stop/pause and own quality, profiles, folder, cursor, recent files, and stream. Window titles persist as `SourceSetting::Window`. A settings window / egui stays parked.
 
 ## Adaptive (MVP2)
 

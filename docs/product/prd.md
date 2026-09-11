@@ -69,6 +69,10 @@ Job: `Ctrl+Shift+R` → talk over a Figma/IDE/Chrome session → pause → stop 
 
 Region capture, instant replay, adaptive quality, MediaMTX / LAN / WebRTC, native settings window / egui, auto-updater, performance dashboard.
 
+### Desktop chrome
+
+- Compact recorder bar is in (always-on-top Win32 toolbar on launch); **egui / settings window** remains parked.
+
 ## MVP2 — Encode-once
 
 Job: encode H.264 **once**. Extra outputs subscribe to those packets. Never start a second video encoder.
